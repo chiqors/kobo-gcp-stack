@@ -15,8 +15,14 @@ case "$action" in
   up)
     if [[ "${GCS_FUSE_ENABLED:-0}" == 1 ]]; then
       docker compose --env-file .env -f compose/compose.yaml --profile gcsfuse up -d gcsfuse
-      for _ in $(seq 1 60); do mountpoint -q runtime/media-mount && break; sleep 2; done
-      mountpoint -q runtime/media-mount || { echo 'GCS FUSE mount did not become ready' >&2; exit 1; }
+      for _ in $(seq 1 60); do
+        [[ "$(findmnt -n -o FSTYPE --target runtime/media-mount 2>/dev/null | tail -1 || true)" == fuse.gcsfuse ]] && break
+        sleep 2
+      done
+      [[ "$(findmnt -n -o FSTYPE --target runtime/media-mount 2>/dev/null | tail -1 || true)" == fuse.gcsfuse ]] || {
+        echo 'GCS FUSE bucket mount did not become ready' >&2
+        exit 1
+      }
     fi
     docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" up -d
     ;;

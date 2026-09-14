@@ -49,6 +49,19 @@ fi
 mode=$(choose 'Deployment mode (local/gcp)' 'local')
 [[ "$mode" == local || "$mode" == gcp ]] || { echo 'Choose local or gcp' >&2; exit 2; }
 
+current_koboform_subdomain=$(sed -n 's/^KOBOFORM_PUBLIC_SUBDOMAIN=//p' "$env_file" | tail -1)
+current_kobocat_subdomain=$(sed -n 's/^KOBOCAT_PUBLIC_SUBDOMAIN=//p' "$env_file" | tail -1)
+current_enketo_subdomain=$(sed -n 's/^ENKETO_PUBLIC_SUBDOMAIN=//p' "$env_file" | tail -1)
+koboform_subdomain=$(choose 'KoboForm subdomain' "${current_koboform_subdomain:-kf}")
+kobocat_subdomain=$(choose 'KoboCAT subdomain' "${current_kobocat_subdomain:-kc}")
+enketo_subdomain=$(choose 'Enketo subdomain' "${current_enketo_subdomain:-ee}")
+for subdomain in "$koboform_subdomain" "$kobocat_subdomain" "$enketo_subdomain"; do
+  [[ "$subdomain" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || {
+    echo "Invalid DNS subdomain label: $subdomain" >&2
+    exit 2
+  }
+done
+
 if [[ "$mode" == gcp ]]; then
   gcs=$(choose 'Enable GCS FUSE? (yes/no)' 'yes')
   sql=$(choose 'Enable Cloud SQL Proxy? (yes/no)' 'yes')
@@ -58,11 +71,13 @@ if [[ "$mode" == gcp ]]; then
     public_domain=$(choose 'Public base domain (for example kobo.example.org)' 'example.org')
     current_newt_network=$(sed -n 's/^NEWT_DOCKER_NETWORK=//p' "$env_file" | tail -1)
     newt_network=$(choose_newt_network "${current_newt_network:-newt}")
+    kpi_dns_server=$(choose 'Pangolin private DNS server' '100.96.128.1')
   else
     public_domain=localhost
     newt_network=newt
+    kpi_dns_server=127.0.0.11
   fi
-  mongo_url=$(choose 'MongoDB 8 connection URI' 'mongodb://user:password@mongo.internal:27017/formhub?authSource=admin')
+  mongo_url=$(choose 'MongoDB 8 connection URI' 'mongodb://kobo:password@mongodb.internal:27017/formhub?authSource=formhub')
   if [[ "$local_redis" == yes || "$local_redis" == y ]]; then
     redis_url=''
   else
@@ -95,9 +110,10 @@ else
   postgres_host=postgres-local
   postgres_port=5432
   newt_network=newt
+  kpi_dns_server=127.0.0.11
 fi
 
-python3 - "$env_file" "$mode" "$gcs" "$sql" "$proxy" "$local_redis" "$public_domain" "$mongo_url" "$redis_url" "$cloud_sql_instance" "$gcs_bucket" "$postgres_host" "$postgres_port" "$newt_network" <<'PY'
+python3 - "$env_file" "$mode" "$gcs" "$sql" "$proxy" "$local_redis" "$public_domain" "$mongo_url" "$redis_url" "$cloud_sql_instance" "$gcs_bucket" "$postgres_host" "$postgres_port" "$newt_network" "$kpi_dns_server" "$koboform_subdomain" "$kobocat_subdomain" "$enketo_subdomain" <<'PY'
 import pathlib, secrets, shlex, sys, urllib.parse
 p = pathlib.Path(sys.argv[1])
 values = {}
@@ -114,9 +130,15 @@ values['PUBLIC_DOMAIN_NAME'] = sys.argv[7]
 values['POSTGRES_HOST'] = sys.argv[12]
 values['POSTGRES_PORT'] = sys.argv[13]
 values['NEWT_DOCKER_NETWORK'] = sys.argv[14]
-for key in ('POSTGRES_PASSWORD', 'MONGO_ROOT_PASSWORD', 'MONGO_USER_PASSWORD', 'REDIS_MAIN_PASSWORD', 'REDIS_CACHE_PASSWORD'):
+values['KPI_DNS_SERVER'] = sys.argv[15]
+values['KOBOFORM_PUBLIC_SUBDOMAIN'] = sys.argv[16]
+values['KOBOCAT_PUBLIC_SUBDOMAIN'] = sys.argv[17]
+values['ENKETO_PUBLIC_SUBDOMAIN'] = sys.argv[18]
+for key in ('MONGO_ROOT_PASSWORD', 'MONGO_USER_PASSWORD', 'REDIS_MAIN_PASSWORD', 'REDIS_CACHE_PASSWORD'):
     if values.get(key) in (None, '', 'CHANGE_ME'):
         values[key] = secrets.token_hex(24)
+if values.get('POSTGRES_PASSWORD') in (None, '', 'CHANGE_ME'):
+    values['POSTGRES_PASSWORD'] = 'Kobo-9z-' + secrets.token_urlsafe(32)
 if values['DEPLOY_MODE'] == 'local':
     values['PUBLIC_DOMAIN_NAME'] = 'localhost'
     values['PUBLIC_REQUEST_SCHEME'] = 'http'
@@ -153,6 +175,7 @@ if values['LOCAL_REDIS_MAIN'] == '1':
     values['REDIS_MAIN_URL'] = f'redis://:{redis_password}@redis-main:6379/0'
 p.write_text('\n'.join(f'{k}={v}' for k, v in values.items()) + '\n')
 PY
+chmod 600 "$env_file"
 
 if [[ "$proxy" == yes || "$proxy" == y ]]; then
   docker network inspect "$newt_network" >/dev/null 2>&1 || {

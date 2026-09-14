@@ -149,7 +149,18 @@ the installer lists the existing user-defined Docker bridge networks. Select
 the network containing the Newt container, enter its name directly, or use the
 conventional `newt` name when that network already exists. The selected name is
 written to `NEWT_DOCKER_NETWORK`; setup verifies that a Newt container is
-attached before continuing. Point the Pangolin resource at `http://kobo-nginx:80`.
+attached before continuing. The installer also records the Pangolin private DNS
+server in `KPI_DNS_SERVER` so KPI and its workers can resolve private resource
+aliases. Point the Pangolin resource at `http://kobo-nginx:80`.
+
+Cloud SQL Proxy runs as its native non-root UID `65532`. When Cloud SQL is
+enabled, host preflight requires the shared credential file to be owned by that
+UID with mode `0600`. Cloud SQL Proxy mounts that file directly, while privileged
+GCS FUSE mounts the containing mode-`0700` directory and uses the same credential.
 
 All combinations render the same `compose/compose.yaml`; Compose profiles only
 control which optional services start.
+
+The installer prompts separately for the KoboForm, KoboCAT, and Enketo
+subdomains. Defaults are `kf`, `kc`, and `ee`, but labels such as `kobo`,
+`kobocat`, and `enketo` are supported.

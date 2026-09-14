@@ -4,6 +4,7 @@ services:
   kpi:
     image: "${KPI_IMAGE:-kobotoolbox/kpi:2.026.33a}"
     init: true
+    dns: ["${KPI_DNS_SERVER:-127.0.0.11}"]
     env_file: [../runtime/kobo.env]
     depends_on:
       preflight: {condition: service_completed_successfully}
@@ -115,7 +116,7 @@ services:
     profiles: [cloud-sql]
     image: "${CLOUD_SQL_PROXY_IMAGE}"
     command: ["--address=0.0.0.0", "--port=5432", "--structured-logs", "--credentials-file=/secrets/service-account.json", "${CLOUD_SQL_INSTANCE_CONNECTION_NAME}"]
-    volumes: [../runtime/secrets/google:/secrets:ro]
+    volumes: [../runtime/secrets/google/service-account.json:/secrets/service-account.json:ro]
     networks: [kobo-internal]
     restart: unless-stopped
 
@@ -162,7 +163,7 @@ services:
     profiles: [gcsfuse]
     restart: unless-stopped
     healthcheck:
-      test: [CMD-SHELL, mountpoint -q /mnt/media]
+      test: [CMD-SHELL, "test \"$$(findmnt -n -o FSTYPE --target /mnt/media | tail -1)\" = fuse.gcsfuse"]
       interval: 5s
       timeout: 3s
       retries: 30

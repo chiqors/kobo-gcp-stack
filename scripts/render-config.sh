@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
-mkdir -p "$root/runtime"/{config/nginx,config/enketo,logs/{kpi,nginx},static,media-mount/{kpi,kobocat},secrets/google}
+mkdir -p "$root/runtime"/{config/nginx,config/enketo,logs/{kpi,nginx},static,secrets/google}
+[[ -d "$root/runtime/media-mount" ]] || mkdir -p "$root/runtime/media-mount"
+[[ -d "$root/runtime/media-mount/kpi" ]] || mkdir "$root/runtime/media-mount/kpi"
+[[ -d "$root/runtime/media-mount/kobocat" ]] || mkdir "$root/runtime/media-mount/kobocat"
 set -a
 source "${1:-$root/.env}"
 [[ -f "$root/runtime/secrets/generated.env" ]] && source "$root/runtime/secrets/generated.env"

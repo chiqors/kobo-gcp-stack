@@ -29,9 +29,23 @@ if grep -q '^CLOUD_SQL_ENABLED=1$' "$root/.env" || grep -q '^GCS_FUSE_ENABLED=1$
   [[ -f "$credential" ]] || { echo "Missing runtime credential: $credential" >&2; exit 1; }
   [[ "$(stat -c '%a' "$credential" 2>/dev/null || stat -f '%Lp' "$credential")" == 600 ]] || { echo "Credential must be mode 600: $credential" >&2; exit 1; }
 fi
+if grep -q '^CLOUD_SQL_ENABLED=1$' "$root/.env"; then
+  credential_dir="$root/runtime/secrets/google"
+  credential="$credential_dir/service-account.json"
+  owner_uid=$(stat -c '%u' "$credential" 2>/dev/null || stat -f '%u' "$credential")
+  if [[ "$owner_uid" != 65532 ]]; then
+    echo 'Cloud SQL Proxy runs as UID 65532 and cannot read its credential.' >&2
+    echo "Run: sudo chown 65532:65532 '$credential'" >&2
+    exit 1
+  fi
+  [[ "$(stat -c '%a' "$credential_dir" 2>/dev/null || stat -f '%Lp' "$credential_dir")" == 700 ]] || {
+    echo "Credential directory must be mode 700: $credential_dir" >&2
+    exit 1
+  }
+fi
 if grep -q '^GCS_FUSE_ENABLED=1$' "$root/.env"; then
   [[ "$(uname -s)" == Linux ]] || { echo 'Containerized GCS FUSE requires a Linux deployment host' >&2; exit 1; }
-  propagation=$(findmnt -no PROPAGATION "$root/runtime/media-mount" 2>/dev/null || true)
+  propagation=$(findmnt -no PROPAGATION --target "$root/runtime/media-mount" 2>/dev/null | tail -1 || true)
   [[ "$propagation" == shared || "$propagation" == rshared ]] || {
     echo "The media bind mount is not shared: $root/runtime/media-mount" >&2
     echo "Run: sudo mount --bind '$root/runtime/media-mount' '$root/runtime/media-mount'" >&2
