@@ -10,6 +10,38 @@ choose() {
   printf '%s' "${answer:-$default}"
 }
 
+choose_newt_network() {
+  local default="$1" answer selected index=1
+  local -a networks=()
+
+  while IFS= read -r selected; do
+    [[ -n "$selected" && "$selected" != bridge ]] && networks+=("$selected")
+  done < <(docker network ls --filter driver=bridge --format '{{.Name}}' 2>/dev/null | sort)
+
+  printf 'Pangolin/Newt network:\n' >&2
+  printf '  Enter "newt" to use the conventional network name.\n' >&2
+  if ((${#networks[@]})); then
+    printf '  Or select an existing Docker bridge network:\n' >&2
+    for selected in "${networks[@]}"; do
+      printf '    %d) %s\n' "$index" "$selected" >&2
+      ((index += 1))
+    done
+  else
+    printf '  No user-defined Docker bridge networks were detected.\n' >&2
+  fi
+
+  read -r -p "Network number or name [$default]: " answer || true
+  answer=${answer:-$default}
+  if [[ "$answer" =~ ^[0-9]+$ ]] && ((answer >= 1 && answer <= ${#networks[@]})); then
+    answer=${networks[answer-1]}
+  fi
+  [[ "$answer" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || {
+    echo 'Docker network names may contain only letters, numbers, period, underscore, and hyphen.' >&2
+    return 2
+  }
+  printf '%s' "$answer"
+}
+
 if [[ ! -f "$env_file" ]]; then
   cp "$root/.env.example" "$env_file"
 fi
@@ -24,8 +56,11 @@ if [[ "$mode" == gcp ]]; then
   local_redis=$(choose 'Run Redis main locally? (yes/no)' 'no')
   if [[ "$proxy" == yes || "$proxy" == y ]]; then
     public_domain=$(choose 'Public base domain (for example kobo.example.org)' 'example.org')
+    current_newt_network=$(sed -n 's/^NEWT_DOCKER_NETWORK=//p' "$env_file" | tail -1)
+    newt_network=$(choose_newt_network "${current_newt_network:-newt}")
   else
     public_domain=localhost
+    newt_network=newt
   fi
   mongo_url=$(choose 'MongoDB 8 connection URI' 'mongodb://user:password@mongo.internal:27017/formhub?authSource=admin')
   if [[ "$local_redis" == yes || "$local_redis" == y ]]; then
@@ -59,9 +94,10 @@ else
   gcs_bucket=''
   postgres_host=postgres-local
   postgres_port=5432
+  newt_network=newt
 fi
 
-python3 - "$env_file" "$mode" "$gcs" "$sql" "$proxy" "$local_redis" "$public_domain" "$mongo_url" "$redis_url" "$cloud_sql_instance" "$gcs_bucket" "$postgres_host" "$postgres_port" <<'PY'
+python3 - "$env_file" "$mode" "$gcs" "$sql" "$proxy" "$local_redis" "$public_domain" "$mongo_url" "$redis_url" "$cloud_sql_instance" "$gcs_bucket" "$postgres_host" "$postgres_port" "$newt_network" <<'PY'
 import pathlib, secrets, shlex, sys, urllib.parse
 p = pathlib.Path(sys.argv[1])
 values = {}
@@ -77,6 +113,7 @@ values['LOCAL_REDIS_MAIN'] = '1' if sys.argv[6].lower() in ('y', 'yes', '1') els
 values['PUBLIC_DOMAIN_NAME'] = sys.argv[7]
 values['POSTGRES_HOST'] = sys.argv[12]
 values['POSTGRES_PORT'] = sys.argv[13]
+values['NEWT_DOCKER_NETWORK'] = sys.argv[14]
 for key in ('POSTGRES_PASSWORD', 'MONGO_ROOT_PASSWORD', 'MONGO_USER_PASSWORD', 'REDIS_MAIN_PASSWORD', 'REDIS_CACHE_PASSWORD'):
     if values.get(key) in (None, '', 'CHANGE_ME'):
         values[key] = secrets.token_hex(24)
@@ -117,14 +154,28 @@ if values['LOCAL_REDIS_MAIN'] == '1':
 p.write_text('\n'.join(f'{k}={v}' for k, v in values.items()) + '\n')
 PY
 
-network=$(sed -n 's/^NEWT_DOCKER_NETWORK=//p' "$env_file" | tail -1)
-network=${network:-newt}
 if [[ "$proxy" == yes || "$proxy" == y ]]; then
-  docker network inspect "$network" >/dev/null 2>&1 || {
-    echo "The Pangolin/Newt Docker network does not exist: $network" >&2
-    echo 'Create the Newt site/network first or set NEWT_DOCKER_NETWORK correctly.' >&2
+  docker network inspect "$newt_network" >/dev/null 2>&1 || {
+    echo "The selected Pangolin/Newt Docker network does not exist: $newt_network" >&2
+    echo 'Create/attach the Newt network first, then rerun the installer and select it.' >&2
+    echo 'Existing user-defined bridge networks:' >&2
+    docker network ls --filter driver=bridge --format '  {{.Name}}' | sed '/  bridge$/d' >&2
     exit 1
   }
+  newt_attached=0
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
+    image=$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null || true)
+    if [[ "$container" == *newt* || "$image" == fosrl/newt* ]]; then
+      newt_attached=1
+      break
+    fi
+  done < <(docker network inspect --format '{{range .Containers}}{{println .Name}}{{end}}' "$newt_network")
+  if [[ "$newt_attached" != 1 ]]; then
+    echo "No Newt container is attached to the selected network: $newt_network" >&2
+    echo 'Attach Newt to this network, then rerun the installer.' >&2
+    exit 1
+  fi
 fi
 
 mkdir -p "$root/runtime/secrets/google"

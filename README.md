@@ -145,8 +145,11 @@ Run `./install.sh` and choose one mode:
 
 With external proxying disabled, Compose creates the named edge network and the
 sites are available on the configured loopback port. With Pangolin/Newt enabled,
-the same network name must already exist and contain the Newt container; point
-the Pangolin resource at `http://kobo-nginx:80`.
+the installer lists the existing user-defined Docker bridge networks. Select
+the network containing the Newt container, enter its name directly, or use the
+conventional `newt` name when that network already exists. The selected name is
+written to `NEWT_DOCKER_NETWORK`; setup verifies that a Newt container is
+attached before continuing. Point the Pangolin resource at `http://kobo-nginx:80`.
 
 All combinations render the same `compose/compose.yaml`; Compose profiles only
 control which optional services start.
