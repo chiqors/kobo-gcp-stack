@@ -1,0 +1,16 @@
+[Unit]
+Description=Kobo Nextgen application stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=%h/kobo-install/nextgen
+ExecStart=%h/kobo-install/nextgen/scripts/deploy.sh up
+ExecStop=%h/kobo-install/nextgen/scripts/deploy.sh down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

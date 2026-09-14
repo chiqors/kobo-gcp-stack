@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+action=${1:-up}
+cd "$root"
+source .env
+./scripts/render-config.sh .env
+./scripts/preflight-host.sh
+profiles=()
+[[ "${DEPLOY_MODE:-local}" == local ]] && profiles+=(--profile local-db)
+[[ "${CLOUD_SQL_ENABLED:-0}" == 1 ]] && profiles+=(--profile cloud-sql)
+[[ "${GCS_FUSE_ENABLED:-0}" == 1 ]] && profiles+=(--profile gcsfuse)
+[[ "${LOCAL_REDIS_MAIN:-0}" == 1 ]] && profiles+=(--profile local-redis-main)
+case "$action" in
+  up)
+    if [[ "${GCS_FUSE_ENABLED:-0}" == 1 ]]; then
+      docker compose --env-file .env -f compose/compose.yaml --profile gcsfuse up -d gcsfuse
+      for _ in $(seq 1 60); do mountpoint -q runtime/media-mount && break; sleep 2; done
+      mountpoint -q runtime/media-mount || { echo 'GCS FUSE mount did not become ready' >&2; exit 1; }
+    fi
+    docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" up -d
+    ;;
+  down) docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" down ;;
+  pull) docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" pull ;;
+  config) docker compose --env-file .env -f compose/compose.yaml config ;;
+  *) echo "usage: $0 {up|down|pull|config}" >&2; exit 2 ;;
+esac

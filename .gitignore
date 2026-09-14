@@ -1,0 +1,6 @@
+# Rendered configuration and all mutable or secret runtime state.
+runtime/
+
+# Local operator overrides may contain infrastructure identifiers or secrets.
+.env
+compose.override.yaml

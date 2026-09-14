@@ -1,0 +1,21 @@
+groups:
+  - name: kobo-nextgen
+    rules:
+      - alert: KoboPublicEndpointDown
+        expr: probe_success{job="kobo-public"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Kobo public endpoint is unavailable"
+      - alert: KoboMediaMountMissing
+        expr: kobo_media_mount_ready != 1
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Kobo GCS FUSE media mount is unavailable"
+      - alert: KoboCeleryQueueBacklog
+        expr: kobo_celery_queue_depth > 1000
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Kobo Celery queue backlog is growing"

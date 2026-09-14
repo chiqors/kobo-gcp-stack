@@ -1,0 +1,16 @@
+[Unit]
+Description=Kobo GCS FUSE media mount
+Requires=docker.service
+After=docker.service network-online.target
+Before=kobo-nextgen.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=%h/kobo-install/nextgen
+ExecStart=/usr/bin/docker compose --env-file .env -f compose/compose.yaml --profile gcsfuse up -d gcsfuse
+ExecStop=/usr/bin/docker compose --env-file .env -f compose/compose.yaml --profile gcsfuse stop gcsfuse
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

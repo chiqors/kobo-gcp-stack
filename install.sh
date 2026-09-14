@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(cd "$(dirname "$0")" && pwd)
+env_file="$root/.env"
+
+choose() {
+  local prompt="$1" default="$2" answer
+  read -r -p "$prompt [$default]: " answer || true
+  printf '%s' "${answer:-$default}"
+}
+
+if [[ ! -f "$env_file" ]]; then
+  cp "$root/.env.example" "$env_file"
+fi
+
+mode=$(choose 'Deployment mode (local/gcp)' 'local')
+[[ "$mode" == local || "$mode" == gcp ]] || { echo 'Choose local or gcp' >&2; exit 2; }
+
+if [[ "$mode" == gcp ]]; then
+  gcs=$(choose 'Enable GCS FUSE? (yes/no)' 'yes')
+  sql=$(choose 'Enable Cloud SQL Proxy? (yes/no)' 'yes')
+  proxy=$(choose 'Use external Pangolin/Newt proxy network? (yes/no)' 'yes')
+  local_redis=$(choose 'Run Redis main locally? (yes/no)' 'no')
+  if [[ "$proxy" == yes || "$proxy" == y ]]; then
+    public_domain=$(choose 'Public base domain (for example kobo.example.org)' 'example.org')
+  else
+    public_domain=localhost
+  fi
+  mongo_url=$(choose 'MongoDB 8 connection URI' 'mongodb://user:password@mongo.internal:27017/formhub?authSource=admin')
+  if [[ "$local_redis" == yes || "$local_redis" == y ]]; then
+    redis_url=''
+  else
+    redis_url=$(choose 'External Redis-main URL' 'rediss://:password@redis.internal:6379/0')
+  fi
+  if [[ "$sql" == yes || "$sql" == y ]]; then
+    cloud_sql_instance=$(choose 'Cloud SQL instance connection name' 'project:region:instance')
+    postgres_host=cloud-sql-proxy
+    postgres_port=5432
+  else
+    cloud_sql_instance=''
+    postgres_host=$(choose 'PostgreSQL host' 'postgres.internal')
+    postgres_port=$(choose 'PostgreSQL port' '5432')
+  fi
+  if [[ "$gcs" == yes || "$gcs" == y ]]; then
+    gcs_bucket=$(choose 'GCS media bucket name' 'project-kobo-media')
+  else
+    gcs_bucket=''
+  fi
+else
+  gcs=no
+  sql=no
+  proxy=no
+  local_redis=yes
+  public_domain=localhost
+  mongo_url=''
+  redis_url=''
+  cloud_sql_instance=''
+  gcs_bucket=''
+  postgres_host=postgres-local
+  postgres_port=5432
+fi
+
+python3 - "$env_file" "$mode" "$gcs" "$sql" "$proxy" "$local_redis" "$public_domain" "$mongo_url" "$redis_url" "$cloud_sql_instance" "$gcs_bucket" "$postgres_host" "$postgres_port" <<'PY'
+import pathlib, secrets, shlex, sys, urllib.parse
+p = pathlib.Path(sys.argv[1])
+values = {}
+for line in p.read_text().splitlines():
+    if line and not line.startswith('#') and '=' in line:
+        k, v = line.split('=', 1); values[k] = v
+values['DEPLOY_MODE'] = sys.argv[2]
+values['GCS_FUSE_ENABLED'] = '1' if sys.argv[3].lower() in ('y', 'yes', '1') else '0'
+values['CLOUD_SQL_ENABLED'] = '1' if sys.argv[4].lower() in ('y', 'yes', '1') else '0'
+values['EXTERNAL_PROXY_ENABLED'] = '1' if sys.argv[5].lower() in ('y', 'yes', '1') else '0'
+values['NEWT_NETWORK_EXTERNAL'] = 'true' if values['EXTERNAL_PROXY_ENABLED'] == '1' else 'false'
+values['LOCAL_REDIS_MAIN'] = '1' if sys.argv[6].lower() in ('y', 'yes', '1') else '0'
+values['PUBLIC_DOMAIN_NAME'] = sys.argv[7]
+values['POSTGRES_HOST'] = sys.argv[12]
+values['POSTGRES_PORT'] = sys.argv[13]
+for key in ('POSTGRES_PASSWORD', 'MONGO_ROOT_PASSWORD', 'MONGO_USER_PASSWORD', 'REDIS_MAIN_PASSWORD', 'REDIS_CACHE_PASSWORD'):
+    if values.get(key) in (None, '', 'CHANGE_ME'):
+        values[key] = secrets.token_hex(24)
+if values['DEPLOY_MODE'] == 'local':
+    values['PUBLIC_DOMAIN_NAME'] = 'localhost'
+    values['PUBLIC_REQUEST_SCHEME'] = 'http'
+    values['POSTGRES_HOST'] = 'postgres-local'
+    mongo_user = urllib.parse.quote_plus(values['MONGO_ROOT_USERNAME'])
+    mongo_password = urllib.parse.quote_plus(values['MONGO_ROOT_PASSWORD'])
+    values['MONGO_DB_URL'] = f"'mongodb://{mongo_user}:{mongo_password}@mongo-local:27017/formhub?authSource=admin'"
+    values['GCS_FUSE_ENABLED'] = '0'
+    values['CLOUD_SQL_ENABLED'] = '0'
+    values['NGINX_BIND_ADDRESS'] = '127.0.0.1'
+    values['NGINX_BIND_PORT'] = '8080'
+    values['NGINX_INTERNAL_API_PORT'] = '8080'
+    values['KOBOFORM_DOCKER_ALIAS'] = f"{values['KOBOFORM_PUBLIC_SUBDOMAIN']}.localhost"
+    values['KOBOCAT_DOCKER_ALIAS'] = f"{values['KOBOCAT_PUBLIC_SUBDOMAIN']}.localhost"
+    values['ENKETO_DOCKER_ALIAS'] = f"{values['ENKETO_PUBLIC_SUBDOMAIN']}.localhost"
+else:
+    values['PUBLIC_REQUEST_SCHEME'] = 'https' if values['EXTERNAL_PROXY_ENABLED'] == '1' else 'http'
+    values['MONGO_DB_URL'] = shlex.quote(sys.argv[8])
+    if values['LOCAL_REDIS_MAIN'] == '0':
+        values['REDIS_MAIN_URL'] = shlex.quote(sys.argv[9])
+    if values['CLOUD_SQL_ENABLED'] == '1':
+        values['CLOUD_SQL_INSTANCE_CONNECTION_NAME'] = sys.argv[10]
+    if values['GCS_FUSE_ENABLED'] == '1':
+        values['GCS_BUCKET_NAME'] = sys.argv[11]
+    if values['EXTERNAL_PROXY_ENABLED'] == '1':
+        values['NGINX_BIND_ADDRESS'] = '127.0.0.1'
+        values['NGINX_BIND_PORT'] = '8080'
+    values['NGINX_INTERNAL_API_PORT'] = '8080'
+    values['KOBOFORM_DOCKER_ALIAS'] = f"{values['KOBOFORM_PUBLIC_SUBDOMAIN']}.{values['INTERNAL_DOMAIN_NAME']}"
+    values['KOBOCAT_DOCKER_ALIAS'] = f"{values['KOBOCAT_PUBLIC_SUBDOMAIN']}.{values['INTERNAL_DOMAIN_NAME']}"
+    values['ENKETO_DOCKER_ALIAS'] = f"{values['ENKETO_PUBLIC_SUBDOMAIN']}.{values['INTERNAL_DOMAIN_NAME']}"
+if values['LOCAL_REDIS_MAIN'] == '1':
+    redis_password = urllib.parse.quote(values['REDIS_MAIN_PASSWORD'], safe='')
+    values['REDIS_MAIN_URL'] = f'redis://:{redis_password}@redis-main:6379/0'
+p.write_text('\n'.join(f'{k}={v}' for k, v in values.items()) + '\n')
+PY
+
+network=$(sed -n 's/^NEWT_DOCKER_NETWORK=//p' "$env_file" | tail -1)
+network=${network:-newt}
+if [[ "$proxy" == yes || "$proxy" == y ]]; then
+  docker network inspect "$network" >/dev/null 2>&1 || {
+    echo "The Pangolin/Newt Docker network does not exist: $network" >&2
+    echo 'Create the Newt site/network first or set NEWT_DOCKER_NETWORK correctly.' >&2
+    exit 1
+  }
+fi
+
+mkdir -p "$root/runtime/secrets/google"
+"$root/scripts/bootstrap-host.sh"
+"$root/scripts/render-config.sh" "$env_file"
+profiles=()
+grep -q '^DEPLOY_MODE=local$' "$env_file" && profiles+=(--profile local-db)
+grep -q '^CLOUD_SQL_ENABLED=1$' "$env_file" && profiles+=(--profile cloud-sql)
+grep -q '^GCS_FUSE_ENABLED=1$' "$env_file" && profiles+=(--profile gcsfuse)
+grep -q '^LOCAL_REDIS_MAIN=1$' "$env_file" && profiles+=(--profile local-redis-main)
+docker compose --env-file "$env_file" -f "$root/compose/compose.yaml" "${profiles[@]}" config >/dev/null
+echo "Configuration written to $env_file"
+if grep -q '^CLOUD_SQL_ENABLED=1$\|^GCS_FUSE_ENABLED=1$' "$env_file"; then
+  echo 'Place the shared key at runtime/secrets/google/service-account.json.'
+fi
+echo 'Next: run scripts/deploy.sh up.'
