@@ -39,6 +39,7 @@ helm_args+=(
   --set "cloudSqlProxy.enabled=$([[ ${CLOUD_SQL_ENABLED:-0} == 1 ]] && echo true || echo false)"
   --set "gcsFuse.enabled=$([[ ${GCS_FUSE_ENABLED:-0} == 1 ]] && echo true || echo false)"
   --set "redisMain.enabled=$([[ ${LOCAL_REDIS_MAIN:-0} == 1 ]] && echo true || echo false)"
+  --set "mongodb.enabled=$([[ ${MONGODB_ENABLED:-0} == 1 ]] && echo true || echo false)"
   --set-string "ingress.hosts[0]=${KOBOFORM_PUBLIC_SUBDOMAIN}.${PUBLIC_DOMAIN_NAME}"
   --set-string "ingress.hosts[1]=${KOBOCAT_PUBLIC_SUBDOMAIN}.${PUBLIC_DOMAIN_NAME}"
   --set-string "ingress.hosts[2]=${ENKETO_PUBLIC_SUBDOMAIN}.${PUBLIC_DOMAIN_NAME}"

@@ -20,6 +20,12 @@ helm template kobo "$root/helm/kobo-nextgen" \
   --set-file "config.enketoEnv=$root/runtime/enketo.env" \
   --set-file "config.enketoJson=$root/runtime/config/enketo/config.json" \
   --set-file "config.nginxConf=$root/runtime/config/nginx/nginx.conf" >/dev/null
+helm template kobo "$root/helm/kobo-nextgen" \
+  --set mongodb.enabled=true \
+  --set-file "config.koboEnv=$root/runtime/kobo.env" \
+  --set-file "config.enketoEnv=$root/runtime/enketo.env" \
+  --set-file "config.enketoJson=$root/runtime/config/enketo/config.json" \
+  --set-file "config.nginxConf=$root/runtime/config/nginx/nginx.conf" | grep -q 'name: mongo'
 gke_manifest=$(mktemp)
 trap 'rm -f "$test_env" "$gke_manifest"' EXIT
 helm template kobo "$root/helm/kobo-nextgen" \

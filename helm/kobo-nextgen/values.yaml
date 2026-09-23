@@ -65,6 +65,15 @@ managedCertificate:
 redisMain:
   enabled: false
 
+mongodb:
+  enabled: false
+  image:
+    repository: mongo
+    tag: "8.0"
+    pullPolicy: IfNotPresent
+  storageClass: ""
+  size: 100Gi
+
 cloudSqlProxy:
   enabled: true
   instanceConnectionName: project:region:instance

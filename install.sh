@@ -82,6 +82,8 @@ memorystore_connectivity=same-vpc
 memorystore_instance_name=''
 memorystore_tier=basic
 memorystore_size_gb=5
+memorystore_port=6379
+memorystore_host=''
 memorystore_tls_enabled=0
 memorystore_auth=''
 psc_service_attachment=''
@@ -90,6 +92,7 @@ psc_subnet_name=''
 psc_subnet_range=''
 gke_manage_dns=0
 gcp_dns_zone_name=''
+mongodb_backend=existing
 if [[ "$deployment_target" == helm ]]; then
   helm_profile=$(choose 'Kubernetes profile (basic/gke)' 'gke')
   [[ "$helm_profile" == basic || "$helm_profile" == gke ]] || {
@@ -193,7 +196,20 @@ if [[ "$mode" == gcp ]]; then
       kpi_dns_server=127.0.0.11
     fi
   fi
-  mongo_url=$(choose 'MongoDB 8 connection URI' 'mongodb://kobo:password@mongodb.internal:27017/formhub?authSource=formhub')
+  if [[ "$deployment_target" == helm ]]; then
+    mongodb_backend=$(choose 'MongoDB backend (existing/cluster)' 'existing')
+    [[ "$mongodb_backend" == existing || "$mongodb_backend" == cluster ]] || {
+      echo 'Choose existing or cluster' >&2
+      exit 2
+    }
+    if [[ "$mongodb_backend" == cluster ]]; then
+      mongo_url='mongodb://provisioned'
+    else
+      mongo_url=$(choose 'MongoDB 8 connection URI' 'mongodb://kobo:password@mongodb.internal:27017/formhub?authSource=admin')
+    fi
+  else
+    mongo_url=$(choose 'MongoDB 8 connection URI' 'mongodb://kobo:password@mongodb.internal:27017/formhub?authSource=admin')
+  fi
   if [[ "$redis_backend" == local ]]; then
     redis_url=''
   elif [[ "$redis_backend" == memorystore ]]; then
@@ -269,7 +285,7 @@ else
   kpi_dns_server=127.0.0.11
 fi
 
-python3 - "$env_file" "$mode" "$gcs" "$sql" "$proxy" "$local_redis" "$public_domain" "$mongo_url" "$redis_url" "$cloud_sql_instance" "$gcs_bucket" "$postgres_host" "$postgres_port" "$newt_network" "$kpi_dns_server" "$koboform_subdomain" "$kobocat_subdomain" "$enketo_subdomain" "$deployment_target" "$helm_profile" "$gke_static_ip_name" "$gke_managed_certificate_enabled" "$gke_managed_certificate_name" "$redis_backend" "$gke_service_account_email" "$gke_static_storage_class" "$gke_resource_action" "$gcp_project_id" "$gcp_region" "$gke_cluster_name" "$gcp_network" "$gcp_subnetwork" "$gke_subnet_range" "$memorystore_connectivity" "$memorystore_instance_name" "$memorystore_tier" "$memorystore_size_gb" "$memorystore_port" "$memorystore_tls_enabled" "$memorystore_auth" "$psc_service_attachment" "$psc_endpoint_name" "$psc_subnet_name" "$psc_subnet_range" "$gke_manage_dns" "$gcp_dns_zone_name" <<'PY'
+python3 - "$env_file" "$mode" "$gcs" "$sql" "$proxy" "$local_redis" "$public_domain" "$mongo_url" "$redis_url" "$cloud_sql_instance" "$gcs_bucket" "$postgres_host" "$postgres_port" "$newt_network" "$kpi_dns_server" "$koboform_subdomain" "$kobocat_subdomain" "$enketo_subdomain" "$deployment_target" "$helm_profile" "$gke_static_ip_name" "$gke_managed_certificate_enabled" "$gke_managed_certificate_name" "$redis_backend" "$gke_service_account_email" "$gke_static_storage_class" "$gke_resource_action" "$gcp_project_id" "$gcp_region" "$gke_cluster_name" "$gcp_network" "$gcp_subnetwork" "$gke_subnet_range" "$memorystore_connectivity" "$memorystore_instance_name" "$memorystore_tier" "$memorystore_size_gb" "$memorystore_port" "$memorystore_tls_enabled" "$memorystore_auth" "$psc_service_attachment" "$psc_endpoint_name" "$psc_subnet_name" "$psc_subnet_range" "$gke_manage_dns" "$gcp_dns_zone_name" "$mongodb_backend" <<'PY'
 import pathlib, secrets, shlex, sys, urllib.parse
 p = pathlib.Path(sys.argv[1])
 values = {}
@@ -305,6 +321,7 @@ values['PSC_SUBNET_NAME'] = sys.argv[43]
 values['PSC_SUBNET_RANGE'] = sys.argv[44]
 values['GKE_MANAGE_DNS'] = sys.argv[45]
 values['GCP_DNS_ZONE_NAME'] = sys.argv[46]
+values['MONGODB_BACKEND'] = sys.argv[47]
 values['GCS_FUSE_ENABLED'] = '1' if sys.argv[3].lower() in ('y', 'yes', '1') else '0'
 values['CLOUD_SQL_ENABLED'] = '1' if sys.argv[4].lower() in ('y', 'yes', '1') else '0'
 values['EXTERNAL_PROXY_ENABLED'] = '1' if sys.argv[5].lower() in ('y', 'yes', '1') else '0'
@@ -347,7 +364,14 @@ if values['DEPLOY_MODE'] == 'local':
     values['ENKETO_DOCKER_ALIAS'] = f"{values['ENKETO_PUBLIC_SUBDOMAIN']}.localhost"
 else:
     values['PUBLIC_REQUEST_SCHEME'] = 'https' if values['EXTERNAL_PROXY_ENABLED'] == '1' or values['DEPLOY_TARGET'] == 'helm' else 'http'
-    values['MONGO_DB_URL'] = shlex.quote(sys.argv[8])
+    if values['MONGODB_BACKEND'] == 'cluster':
+        values['MONGODB_ENABLED'] = '1'
+        mongo_user = urllib.parse.quote_plus(values['MONGO_ROOT_USERNAME'])
+        mongo_password = urllib.parse.quote_plus(values['MONGO_ROOT_PASSWORD'])
+        values['MONGO_DB_URL'] = f"'mongodb://{mongo_user}:{mongo_password}@mongo:27017/formhub?authSource=admin'"
+    else:
+        values['MONGODB_ENABLED'] = '0'
+        values['MONGO_DB_URL'] = shlex.quote(sys.argv[8])
     if values['LOCAL_REDIS_MAIN'] == '0':
         values['REDIS_MAIN_URL'] = shlex.quote(sys.argv[9])
     if values['CLOUD_SQL_ENABLED'] == '1':

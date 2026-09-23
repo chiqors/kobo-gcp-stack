@@ -203,9 +203,11 @@ The installer asks whether GCP resources are `existing` or `create`:
 
 Cloud SQL is validated but not created because database users, PostGIS
 extensions, backups, and deletion protection need an explicit database
-provisioning policy. MongoDB also remains an external URI. The installer records
-all discovered settings in `.env`, so a private values file is only needed for
-additional overrides:
+provisioning policy. For GKE, MongoDB can use an existing private URI or run
+inside the cluster as a single MongoDB 8 StatefulSet with a persistent volume
+and internal-only `mongo` Service. The installer records all discovered
+settings in `.env`, so a private values file is only needed for additional
+overrides:
 
 ```bash
 cp helm/values.gke.example.yaml helm/values.gke.local.yaml
@@ -252,3 +254,9 @@ zone and points the three A records (`kf`, `kc`, and `ee` by default) at the
 reserved global IP. Otherwise, create those records manually. Google-managed
 certificate provisioning completes only after the public records resolve to
 the Ingress.
+
+The in-cluster MongoDB option is intended for smaller or transitional
+deployments. It is one replica, not a high-availability replica set. Production
+deployments should use an existing MongoDB replica set, or add zone-aware
+members, TLS, backups, and restore automation before relying on MongoDB inside
+the application cluster.

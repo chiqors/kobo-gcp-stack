@@ -28,6 +28,12 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "kobo.serviceAccountName" $root }}
+      {{- if $root.Values.mongodb.enabled }}
+      initContainers:
+        - name: wait-for-mongodb
+          image: busybox:1.36
+          command: [sh, -c, "until nc -z mongo 27017; do sleep 2; done"]
+      {{- end }}
       containers:
         - name: {{ $name }}
           image: {{ include "kobo.image" $root.Values.images.kpi }}

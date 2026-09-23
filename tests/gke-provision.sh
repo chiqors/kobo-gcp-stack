@@ -112,12 +112,14 @@ printf '%s\n' \
   test-project us-central1 kobo kobo-vpc kobo-gke kobo-public-ip \
   yes kobo-managed-certificate kobo@test-project.iam.gserviceaccount.com \
   standard-rwx no \
-  'mongodb://kobo:password@mongodb.internal:27017/formhub?authSource=formhub' \
+  cluster \
   same-vpc 6379 no kobo-redis test-project:us-central1:kobo test-kobo-media \
   | "$install_root/install.sh" >/dev/null
 grep -q '^GKE_RESOURCE_ACTION=existing$' "$install_root/.env"
 grep -q '^MEMORYSTORE_CONNECTIVITY=same-vpc$' "$install_root/.env"
 grep -q '^REDIS_MAIN_URL=redis://:generated-auth@10.30.0.5:6379/0$' "$install_root/.env"
 grep -q '^GKE_STATIC_IP_ADDRESS=34.10.20.30$' "$install_root/.env"
+grep -q '^MONGODB_ENABLED=1$' "$install_root/.env"
+grep -q '@mongo:27017/formhub?authSource=admin' "$install_root/.env"
 
 echo 'GKE provisioning validation is valid'
