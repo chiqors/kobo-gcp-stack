@@ -4,3 +4,4 @@ runtime/
 # Local operator overrides may contain infrastructure identifiers or secrets.
 .env
 compose.override.yaml
+helm/*.local.yaml

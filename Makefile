@@ -18,3 +18,21 @@ down:
 
 smoke:
 	$(ROOT)/scripts/smoke-test.sh
+
+helm-config: render
+	$(ROOT)/scripts/deploy-helm.sh config
+
+helm-up: render
+	$(ROOT)/scripts/deploy-helm.sh up
+
+helm-down:
+	$(ROOT)/scripts/deploy-helm.sh down
+
+gke-validate:
+	$(ROOT)/scripts/provision-gke.sh validate $(ROOT)/.env
+
+gke-provision:
+	$(ROOT)/scripts/provision-gke.sh apply $(ROOT)/.env
+
+test-gke-provision:
+	$(ROOT)/tests/gke-provision.sh

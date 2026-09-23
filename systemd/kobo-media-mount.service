@@ -7,7 +7,7 @@ Before=kobo-nextgen.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=%h/kobo-install/nextgen
+WorkingDirectory=%h/kobo-gcp-stack
 ExecStart=/usr/bin/docker compose --env-file .env -f compose/compose.yaml --profile gcsfuse up -d gcsfuse
 ExecStop=/usr/bin/docker compose --env-file .env -f compose/compose.yaml --profile gcsfuse stop gcsfuse
 TimeoutStartSec=0

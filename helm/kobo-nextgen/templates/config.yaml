@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "kobo.fullname" . }}-runtime
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  kobo.env: |
+    {{- required "config.koboEnv must be supplied with --set-file" .Values.config.koboEnv | nindent 4 }}
+  enketo.env: |
+    {{- required "config.enketoEnv must be supplied with --set-file" .Values.config.enketoEnv | nindent 4 }}
+  config.json: |
+    {{- required "config.enketoJson must be supplied with --set-file" .Values.config.enketoJson | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kobo.fullname" . }}-nginx
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+data:
+  nginx.conf: |
+    {{- required "config.nginxConf must be supplied with --set-file" .Values.config.nginxConf | nindent 4 }}

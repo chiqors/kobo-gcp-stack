@@ -7,7 +7,7 @@ http {
   sendfile on;
   client_max_body_size 100M;
   server_tokens off;
-  resolver 127.0.0.11 ipv6=off valid=10s;
+  resolver __DNS_RESOLVER__ ipv6=off valid=10s;
   map $http_upgrade $connection_upgrade { default upgrade; '' close; }
   server {
     listen 80 default_server;

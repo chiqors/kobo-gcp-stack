@@ -1,0 +1,100 @@
+nameOverride: ""
+fullnameOverride: ""
+
+images:
+  kpi:
+    repository: kobotoolbox/kpi
+    tag: 2.026.33a
+    pullPolicy: IfNotPresent
+  enketo:
+    repository: kobotoolbox/enketo-express-extra-widgets
+    tag: 7.6.3
+    pullPolicy: IfNotPresent
+  nginx:
+    repository: nginx
+    tag: "1.27"
+    pullPolicy: IfNotPresent
+  redis:
+    repository: redis
+    tag: "7.2"
+    pullPolicy: IfNotPresent
+  cloudSqlProxy:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: 2.14.1
+    pullPolicy: IfNotPresent
+
+config:
+  koboEnv: ""
+  enketoEnv: ""
+  enketoJson: ""
+  nginxConf: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+workers:
+  worker: /srv/src/kpi/docker/entrypoint_celery_kpi_worker.bash
+  worker-low: /srv/src/kpi/docker/entrypoint_celery_kpi_worker_low_priority.bash
+  worker-long: /srv/src/kpi/docker/entrypoint_celery_kpi_worker_long_running_tasks.bash
+  worker-kobocat: /srv/src/kpi/docker/entrypoint_celery_kobocat_worker.bash
+  beat: /srv/src/kpi/docker/entrypoint_celery_beat.bash
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  gce: false
+  staticIpName: ""
+  annotations: {}
+  hosts:
+    - kf.example.org
+    - kc.example.org
+    - ee.example.org
+  tls: []
+
+managedCertificate:
+  enabled: false
+  name: kobo-managed-certificate
+  domains: []
+
+redisMain:
+  enabled: false
+
+cloudSqlProxy:
+  enabled: true
+  instanceConnectionName: project:region:instance
+  credentialsSecret: ""
+
+gcsFuse:
+  enabled: true
+  bucketName: project-kobo-media
+  mountOptions: implicit-dirs
+
+persistence:
+  media:
+    enabled: false
+    existingClaim: ""
+    storageClass: ""
+    accessModes: [ReadWriteMany]
+    size: 100Gi
+  static:
+    existingClaim: ""
+    storageClass: ""
+    accessModes: [ReadWriteMany]
+    size: 10Gi
+  redisCache:
+    storageClass: ""
+    size: 8Gi
+  redisMain:
+    storageClass: ""
+    size: 20Gi
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

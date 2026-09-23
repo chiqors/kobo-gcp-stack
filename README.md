@@ -135,7 +135,20 @@ without contacting external services.
 
 ## Installer modes
 
-Run `./install.sh` and choose one mode:
+Run `./install.sh` and first choose a deployment target. `docker` remains the
+default and uses the existing Compose workflow. `helm` renders the same Kobo
+configuration and validates `helm/kobo-nextgen`; the Helm target currently
+supports GCP mode only.
+
+The Helm target then offers two profiles:
+
+- `basic`: provider-neutral Kubernetes defaults. GCP ingress, managed
+   certificates, Cloud SQL Proxy, and GCS FUSE are opt-in.
+- `gke`: guided GKE defaults for a global static IP, Google-managed TLS
+   certificate, Workload Identity, GCS FUSE CSI media, Cloud SQL Proxy, a
+   Filestore-backed RWX storage class, and Memorystore Redis.
+
+Then choose one mode:
 
 - `local`: local PostGIS/PostgreSQL 14, MongoDB 8, Redis main/cache, local media
   directories, and HTTP endpoints at `kf.localhost:8080`,
@@ -164,3 +177,78 @@ control which optional services start.
 The installer prompts separately for the KoboForm, KoboCAT, and Enketo
 subdomains. Defaults are `kf`, `kc`, and `ee`, but labels such as `kobo`,
 `kobocat`, and `enketo` are supported.
+
+## Kubernetes with Helm
+
+The initial chart deploys KPI, the Celery workers and beat, Enketo, NGINX,
+Redis cache, optional Redis main, and optional Cloud SQL Auth Proxy. PostgreSQL
+and MongoDB remain external in GCP mode. Media defaults to the GKE Cloud Storage
+FUSE CSI driver; static files require a `ReadWriteMany` storage class or an
+existing claim.
+
+Prerequisites are Helm 3, `kubectl` access to the target cluster, the GKE Cloud
+Storage FUSE CSI driver when enabled, and Workload Identity permissions for the
+Kubernetes workload. The `gke` profile also requires an authenticated Google
+Cloud CLI account with permission to inspect or create the selected resources.
+
+The installer asks whether GCP resources are `existing` or `create`:
+
+- `existing` performs read-only resource checks, obtains cluster credentials,
+   discovers the Memorystore endpoint and AUTH string when permitted, and runs a
+   TCP probe from a temporary pod.
+- `create` enables required APIs and creates missing VPC/subnet, Autopilot GKE
+   cluster, CSI add-ons, global static IP, GCS bucket, Google service account and
+   IAM bindings, same-VPC Memorystore resources or a consumer PSC endpoint, and
+   optional Cloud DNS records. These are billable resources.
+
+Cloud SQL is validated but not created because database users, PostGIS
+extensions, backups, and deletion protection need an explicit database
+provisioning policy. MongoDB also remains an external URI. The installer records
+all discovered settings in `.env`, so a private values file is only needed for
+additional overrides:
+
+```bash
+cp helm/values.gke.example.yaml helm/values.gke.local.yaml
+HELM_NAMESPACE=kobo HELM_RELEASE=kobo \
+   HELM_VALUES_FILE=helm/values.gke.local.yaml \
+   ./scripts/deploy-helm.sh up
+```
+
+The deployment wrapper passes rendered secrets and configuration through
+`--set-file`; they are not stored in the chart's committed `values.yaml`.
+Validate without contacting the cluster with `make helm-config`, and remove the
+release with `make helm-down`.
+
+After editing `.env`, rerun only GCP checks with `make gke-validate`, or create
+missing resources with `make gke-provision`. Resource creation is idempotent:
+existing resources are reused and checked rather than replaced.
+
+For Workload Identity, annotate `serviceAccount.annotations` in that values
+file with `iam.gke.io/gcp-service-account: NAME@PROJECT.iam.gserviceaccount.com`.
+The GKE installer profile sets this annotation from its service-account prompt.
+
+### Memorystore networking
+
+For `same-vpc`, the GKE profile validates an existing Memorystore for Redis
+instance or creates one using Private Services Access, then discovers its IP,
+port, and AUTH string. It writes the resulting URI to `REDIS_MAIN_URL`; Kobo and
+Enketo use Memorystore while the local Redis cache remains in the cluster.
+
+For `psc`, supply the service attachment URI exposed or approved by the Redis
+producer. In `create` mode, the provisioner creates the consumer PSC subnet,
+internal address, and forwarding rule in the GKE VPC. In both modes it requires
+the PSC connection status to be `ACCEPTED` and probes the endpoint from GKE.
+The producer-side Redis instance, service attachment, connection preference,
+and acceptance policy remain owned by the producer project.
+
+Using the same VPC or a Shared VPC is the simplest arrangement. Ordinary VPC
+peering is not transitive through Memorystore's service networking, so merely
+peering two consumer VPCs may not produce a working route. PSC avoids that
+transitivity assumption when the selected Redis product exposes a compatible
+service attachment.
+
+When Cloud DNS management is selected, the provisioner creates or validates the
+zone and points the three A records (`kf`, `kc`, and `ee` by default) at the
+reserved global IP. Otherwise, create those records manually. Google-managed
+certificate provisioning completes only after the public records resolve to
+the Ingress.

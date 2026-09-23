@@ -25,6 +25,10 @@ case "$action" in
       }
     fi
     docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" up -d
+    if [[ "${GCS_FUSE_ENABLED:-0}" == 1 ]]; then
+      docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" \
+        up -d --force-recreate kpi worker worker-low worker-long worker-kobocat beat nginx
+    fi
     ;;
   down) docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" down ;;
   pull) docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" pull ;;

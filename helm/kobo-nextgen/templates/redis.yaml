@@ -1,0 +1,66 @@
+{{- $instances := dict "redis-cache" .Values.persistence.redisCache -}}
+{{- if .Values.redisMain.enabled }}{{ $_ := set $instances "redis-main" .Values.persistence.redisMain }}{{- end }}
+{{- range $name, $persistence := $instances }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "kobo.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kobo.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "kobo.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+    spec:
+      serviceAccountName: {{ include "kobo.serviceAccountName" $ }}
+      containers:
+        - name: redis
+          image: {{ include "kobo.image" $.Values.images.redis }}
+          command: [redis-server, --appendonly, "yes", --requirepass, $(REDIS_PASSWORD)]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kobo.fullname" $ }}-kobo-env
+                  key: {{ ternary "REDIS_PASSWORD" "REDIS_MAIN_PASSWORD" (eq $name "redis-cache") }}
+          ports:
+            - name: redis
+              containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with $persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+spec:
+  selector:
+    {{- include "kobo.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+{{- end }}

@@ -1,0 +1,178 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kobo.fullname" . }}-enketo
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: enketo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kobo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: enketo
+  template:
+    metadata:
+      labels:
+        {{- include "kobo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: enketo
+    spec:
+      serviceAccountName: {{ include "kobo.serviceAccountName" . }}
+      containers:
+        - name: enketo
+          image: {{ include "kobo.image" .Values.images.enketo }}
+          imagePullPolicy: {{ .Values.images.enketo.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "kobo.fullname" . }}-enketo-env
+          volumeMounts:
+            - name: config
+              mountPath: /srv/src/enketo/packages/enketo-express/config/config.json
+              subPath: config.json
+              readOnly: true
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "kobo.fullname" . }}-runtime
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: enketo
+spec:
+  selector:
+    {{- include "kobo.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: enketo
+  ports:
+    - name: http
+      port: 8005
+      targetPort: 8005
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kobo.fullname" . }}-nginx
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kobo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nginx
+  template:
+    metadata:
+      labels:
+        {{- include "kobo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nginx
+      {{- with (include "kobo.podAnnotations" .) }}
+      annotations:
+        {{- . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "kobo.serviceAccountName" . }}
+      containers:
+        - name: nginx
+          image: {{ include "kobo.image" .Values.images.nginx }}
+          imagePullPolicy: {{ .Values.images.nginx.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: media
+              mountPath: /media
+              subPath: kobocat
+              readOnly: true
+            - name: media
+              mountPath: /srv/kpi_media
+              subPath: kpi
+              readOnly: true
+            - name: static
+              mountPath: /srv/www
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "kobo.fullname" . }}-nginx
+        - name: media
+          {{- include "kobo.mediaVolume" . | nindent 10 }}
+        - name: static
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-static" (include "kobo.fullname" .)) .Values.persistence.static.existingClaim }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kobo.fullname" . }}
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "kobo.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kobo.fullname" . }}
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+  {{- if or .Values.ingress.annotations .Values.ingress.gce .Values.ingress.staticIpName .Values.managedCertificate.enabled }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.ingress.gce }}
+    kubernetes.io/ingress.class: gce
+    {{- end }}
+    {{- with .Values.ingress.staticIpName }}
+    kubernetes.io/ingress.global-static-ip-name: {{ . | quote }}
+    {{- end }}
+    {{- if .Values.managedCertificate.enabled }}
+    networking.gke.io/managed-certificates: {{ .Values.managedCertificate.name | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kobo.fullname" $ }}
+                port:
+                  name: http
+    {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{ toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- if .Values.managedCertificate.enabled }}
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ .Values.managedCertificate.name }}
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+spec:
+  domains:
+    {{- required "managedCertificate.domains is required when enabled" .Values.managedCertificate.domains | toYaml | nindent 4 }}
+{{- end }}

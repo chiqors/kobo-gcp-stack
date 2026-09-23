@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kobo-nextgen
+description: KoboToolbox application stack for Kubernetes and GKE
+type: application
+version: 0.1.0
+appVersion: "2.026.33a"

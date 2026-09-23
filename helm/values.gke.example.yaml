@@ -1,0 +1,33 @@
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: kobo@PROJECT_ID.iam.gserviceaccount.com
+
+ingress:
+  className: ""
+  gce: true
+  staticIpName: kobo-public-ip
+  annotations: {}
+  tls: []
+
+managedCertificate:
+  enabled: true
+  name: kobo-managed-certificate
+  domains:
+    - kf.example.org
+    - kc.example.org
+    - ee.example.org
+
+# GKE Persistent Disk does not support ReadWriteMany. Use a Filestore-backed
+# StorageClass or an existing RWX claim for static files shared with NGINX.
+persistence:
+  static:
+    storageClass: standard-rwx
+    accessModes: [ReadWriteMany]
+    size: 10Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 2Gi

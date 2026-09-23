@@ -1,0 +1,61 @@
+{{- if .Values.cloudSqlProxy.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-sql-proxy
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-sql-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kobo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cloud-sql-proxy
+  template:
+    metadata:
+      labels:
+        {{- include "kobo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cloud-sql-proxy
+    spec:
+      serviceAccountName: {{ include "kobo.serviceAccountName" . }}
+      containers:
+        - name: cloud-sql-proxy
+          image: {{ include "kobo.image" .Values.images.cloudSqlProxy }}
+          args:
+            - --address=0.0.0.0
+            - --port=5432
+            - --structured-logs
+            {{- if .Values.cloudSqlProxy.credentialsSecret }}
+            - --credentials-file=/secrets/service-account.json
+            {{- end }}
+            - {{ required "cloudSqlProxy.instanceConnectionName is required" .Values.cloudSqlProxy.instanceConnectionName | quote }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          {{- if .Values.cloudSqlProxy.credentialsSecret }}
+          volumeMounts:
+            - name: credentials
+              mountPath: /secrets
+              readOnly: true
+          {{- end }}
+      {{- if .Values.cloudSqlProxy.credentialsSecret }}
+      volumes:
+        - name: credentials
+          secret:
+            secretName: {{ .Values.cloudSqlProxy.credentialsSecret }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-sql-proxy
+spec:
+  selector:
+    {{- include "kobo.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-sql-proxy
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+{{- end }}

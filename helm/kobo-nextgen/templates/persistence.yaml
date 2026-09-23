@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kobo.fullname" . }}-static
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+spec:
+  accessModes: {{ toYaml .Values.persistence.static.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.static.size }}
+  {{- with .Values.persistence.static.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- if and .Values.persistence.media.enabled (not .Values.persistence.media.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kobo.fullname" . }}-media
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+spec:
+  accessModes: {{ toYaml .Values.persistence.media.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.media.size }}
+  {{- with .Values.persistence.media.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

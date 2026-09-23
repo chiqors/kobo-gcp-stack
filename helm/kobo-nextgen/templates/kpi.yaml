@@ -1,0 +1,72 @@
+{{- $root := . -}}
+{{- $workloads := dict "kpi" "" -}}
+{{- range $name, $command := .Values.workers }}
+{{- $_ := set $workloads $name $command -}}
+{{- end }}
+{{- range $name, $command := $workloads }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kobo.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "kobo.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kobo.selectorLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "kobo.selectorLabels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+      {{- with (include "kobo.podAnnotations" $root) }}
+      annotations:
+        {{- . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "kobo.serviceAccountName" $root }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "kobo.image" $root.Values.images.kpi }}
+          imagePullPolicy: {{ $root.Values.images.kpi.pullPolicy }}
+          {{- if $command }}
+          command: [bash, {{ $command | quote }}]
+          {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ include "kobo.fullname" $root }}-kobo-env
+          volumeMounts:
+            - name: media
+              mountPath: /srv/src/kpi/media
+              subPath: kpi
+            - name: media
+              mountPath: /srv/src/kobocat/media
+              subPath: kobocat
+            - name: static
+              mountPath: /srv/static
+          resources: {{ toYaml $root.Values.resources | nindent 12 }}
+      volumes:
+        - name: media
+          {{- include "kobo.mediaVolume" $root | nindent 10 }}
+        - name: static
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-static" (include "kobo.fullname" $root)) $root.Values.persistence.static.existingClaim }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kpi
+  labels:
+    {{- include "kobo.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "kobo.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: kpi
+  ports:
+    - name: uwsgi
+      port: 8000
+      targetPort: 8000
