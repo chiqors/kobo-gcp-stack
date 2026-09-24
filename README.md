@@ -133,6 +133,10 @@ name, and service-account file must be supplied in `.env` and runtime secrets.
 Run `make config` before any start operation; it validates Compose expansion
 without contacting external services.
 
+Email verification defaults to `none` because SMTP is not configured in this
+stack. Set `ACCOUNT_EMAIL_VERIFICATION=mandatory` after configuring outbound
+email if new accounts must confirm their addresses.
+
 ## Installer modes
 
 Run `./install.sh` and first choose a deployment target. `docker` remains the
