@@ -26,3 +26,15 @@ This force-recreates the FUSE container, waits for both prefix mounts, and
 recreates `kpi`, the workers, `beat`, and NGINX. Do not use
 `docker compose restart gcsfuse`; it leaves stale mounts and does not recreate
 the consumers.
+
+## Boot ordering
+
+`sudo scripts/install-systemd.sh` installs the units that bring the stack up in
+order after a VM reboot: `kobo-media-bind.service` (shared bind, before Docker),
+`kobo-media-mount.service` (GCS FUSE prefixes ready), then
+`kobo-nextgen.service` (`scripts/deploy.sh up`). After a reboot, confirm with:
+
+```bash
+systemctl status kobo-media-bind.service kobo-media-mount.service kobo-nextgen.service
+findmnt -o TARGET,FSTYPE,PROPAGATION | grep media-mount
+```

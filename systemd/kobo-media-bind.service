@@ -1,0 +1,14 @@
+[Unit]
+Description=Kobo shared media bind mount
+Documentation=https://github.com/kobotoolbox/kobo-gcp-stack
+After=local-fs.target
+Before=docker.service
+Requires=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=__KOBO_ROOT__/scripts/bind-media-mount.sh
+
+[Install]
+WantedBy=multi-user.target

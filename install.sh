@@ -450,4 +450,5 @@ if [[ "$deployment_target" == helm ]]; then
   fi
 else
   echo 'Next: run scripts/deploy.sh up.'
+  echo 'For automatic, correctly ordered startup on reboot: sudo scripts/install-systemd.sh'
 fi

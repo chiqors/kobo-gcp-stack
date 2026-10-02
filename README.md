@@ -3,6 +3,32 @@
 This directory is the design workspace for a custom, production-oriented Kobo
 deployment. It does not replace or modify the current `kobo-install` flow yet.
 
+## Operations essentials
+
+The short list of things that are easy to get wrong in production. Follow the
+links for the full detail.
+
+| Task | Command | Notes |
+|---|---|---|
+| Start / stop the stack | `./scripts/deploy.sh up` / `down` | `up` mounts media before starting containers |
+| Bring the stack up on reboot | `sudo scripts/install-systemd.sh` | installs the ordered boot units (see below) |
+| Recover media after a GCS remount | `./scripts/deploy.sh remount` | recreates the FUSE mount **and** the media consumers |
+| Validate config | `make config` | renders and validates Compose without contacting services |
+
+> **Never run `docker compose restart gcsfuse` on its own.** A container that
+> bound a live FUSE mount keeps pointing at that dead mount, so media then
+> returns `Transport endpoint is not connected`. Use
+> `./scripts/deploy.sh remount`, which recreates the FUSE container, waits for
+> both prefix mounts to be live, and recreates `kpi`, the workers, `beat`, and
+> NGINX.
+
+Boot order is enforced by three systemd units installed by
+`scripts/install-systemd.sh`: `kobo-media-bind.service` (shared bind mount,
+before Docker), `kobo-media-mount.service` (GCS FUSE prefixes ready), then
+`kobo-nextgen.service` (`scripts/deploy.sh up`). See
+[ARCHITECTURE.md](ARCHITECTURE.md#boot-ordering) and
+[runbooks/deploy.md](runbooks/deploy.md).
+
 ## Target topology
 
 ```text
@@ -113,9 +139,16 @@ Do not use that reset procedure for a production deployment.
 ## Documents
 
 - [TREE.md](TREE.md): proposed repository and deployment-template tree.
-- [ARCHITECTURE.md](ARCHITECTURE.md): service boundaries and configuration.
+- [ARCHITECTURE.md](ARCHITECTURE.md): service boundaries, configuration, and the
+   media mount contract and boot ordering.
 - [DECISIONS.md](DECISIONS.md): decisions, risks, and open questions.
 - [ROLLOUT.md](ROLLOUT.md): phased implementation and acceptance gates.
+- [runbooks/deploy.md](runbooks/deploy.md): deploy, media remount, and boot.
+- [runbooks/rollback.md](runbooks/rollback.md): rolling back a release.
+- [runbooks/database-restore.md](runbooks/database-restore.md): PostgreSQL restore.
+- [runbooks/media-recovery.md](runbooks/media-recovery.md): media recovery.
+- [runbooks/incident-response.md](runbooks/incident-response.md): incident handling.
+- [monitoring/alerts.md](monitoring/alerts.md): alerting rules and thresholds.
 
 ## Current recommendation
 
@@ -181,6 +214,37 @@ control which optional services start.
 The installer prompts separately for the KoboForm, KoboCAT, and Enketo
 subdomains. Defaults are `kf`, `kc`, and `ee`, but labels such as `kobo`,
 `kobocat`, and `enketo` are supported.
+
+## Boot and reboot behaviour
+
+On a Docker deployment, enable the boot units so a VM restart brings the shared
+media mount up before Kobo:
+
+```bash
+sudo scripts/install-systemd.sh
+```
+
+This installs and enables three units, ordered by systemd:
+
+1. `kobo-media-bind.service` runs before `docker.service` and makes
+   `runtime/media-mount` a shared mount, so the GCS FUSE prefixes propagate into
+   the containers regardless of the order Docker restarts them.
+2. `kobo-media-mount.service` starts the `gcsfuse` container after Docker and
+   waits until both prefix mounts (`runtime/media-mount/kpi` and `.../kobocat`)
+   are live.
+3. `kobo-nextgen.service` runs `scripts/deploy.sh up` after the media mount is
+   ready, then reconciles the media consumers only if they are stale.
+
+Verify or control the stack with standard systemd commands:
+
+```bash
+systemctl status kobo-nextgen.service
+sudo systemctl stop kobo-nextgen.service   # equal to scripts/deploy.sh down
+sudo systemctl start kobo-nextgen.service  # equal to scripts/deploy.sh up
+```
+
+Never `docker compose restart gcsfuse` on its own; a remount requires recreating
+the media consumers, which `scripts/deploy.sh remount` does safely.
 
 ## Kubernetes with Helm
 

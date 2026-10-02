@@ -139,6 +139,24 @@ recreates `kpi`, the workers, `beat`, and NGINX, and `remount` does the same
 after force-recreating the FUSE container. Never `docker compose restart` the
 `gcsfuse` container on its own; use `scripts/deploy.sh remount`.
 
+### Boot ordering
+
+`scripts/install-systemd.sh` installs three units so a VM reboot brings media up
+before the application:
+
+1. `kobo-media-bind.service` — runs `scripts/bind-media-mount.sh` **before
+  `docker.service`** so the shared bind mount exists before any container
+  starts. This makes media propagate into the containers regardless of the
+  order in which Docker restarts them.
+2. `kobo-media-mount.service` — after Docker starts the `gcsfuse` container
+  (`scripts/deploy.sh media-up`) and waits for both prefix mounts to be live.
+3. `kobo-nextgen.service` — ordered after the media mount; runs
+  `scripts/deploy.sh up`, which starts the stack and reconciles the media
+  consumers only if they are stale.
+
+The units use absolute paths rendered for the deploying user; they replace the
+old templates that relied on `%h`, which expands to `/root` for system units.
+
 Containerized GCS FUSE needs `/dev/fuse`, `SYS_ADMIN`, mount propagation, and a
 shared host bind mount. This is elevated infrastructure, so the FUSE container
 must be isolated from the public network. It reads the same mounted JSON key as

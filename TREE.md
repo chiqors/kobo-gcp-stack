@@ -19,6 +19,8 @@ nextgen/
 |-- images/gcsfuse/Dockerfile
 |-- scripts/
 |   |-- bootstrap-host.sh
+|   |-- bind-media-mount.sh
+|   |-- install-systemd.sh
 |   |-- render-config.sh
 |   |-- preflight-host.sh
 |   |-- preflight.sh
@@ -33,6 +35,7 @@ nextgen/
 |   `-- restore-drill.sh
 |-- secrets/README.md
 |-- systemd/
+|   |-- kobo-media-bind.service
 |   |-- kobo-nextgen.service
 |   `-- kobo-media-mount.service
 |-- monitoring/

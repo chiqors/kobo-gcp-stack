@@ -48,8 +48,8 @@ if grep -q '^GCS_FUSE_ENABLED=1$' "$root/.env"; then
   propagation=$(findmnt -no PROPAGATION --target "$root/runtime/media-mount" 2>/dev/null | tail -1 || true)
   [[ "$propagation" == shared || "$propagation" == rshared ]] || {
     echo "The media bind mount is not shared: $root/runtime/media-mount" >&2
-    echo "Run: sudo mount --bind '$root/runtime/media-mount' '$root/runtime/media-mount'" >&2
-    echo "Then: sudo mount --make-shared '$root/runtime/media-mount'" >&2
+    echo "Run: sudo '$root/scripts/bind-media-mount.sh'" >&2
+    echo 'At boot this is done by kobo-media-bind.service (see scripts/install-systemd.sh).' >&2
     exit 1
   }
 fi

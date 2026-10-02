@@ -1,15 +1,16 @@
 [Unit]
 Description=Kobo Nextgen application stack
-Requires=docker.service
-After=docker.service network-online.target
+Requires=docker.service kobo-media-mount.service
+After=docker.service network-online.target kobo-media-mount.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=%h/kobo-install/nextgen
-ExecStart=%h/kobo-install/nextgen/scripts/deploy.sh up
-ExecStop=%h/kobo-install/nextgen/scripts/deploy.sh down
+User=__KOBO_USER__
+WorkingDirectory=__KOBO_ROOT__
+ExecStart=__KOBO_ROOT__/scripts/deploy.sh up
+ExecStop=__KOBO_ROOT__/scripts/deploy.sh down
 TimeoutStartSec=0
 
 [Install]
