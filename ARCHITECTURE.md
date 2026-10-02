@@ -119,9 +119,13 @@ The released KPI container expects two writable filesystem trees:
 ```
 
 NGINX also needs read-only access to KoboCAT media and KPI public media. Mount
-one bucket at `runtime/media-mount`, with separate `kpi/` and `kobocat/`
-prefixes, then bind those prefixes into every application worker and NGINX.
-Static files and logs remain on local persistent disk.
+the `kpi/` and `kobocat/` prefixes of the bucket directly on their own mount
+points (`runtime/media-mount/kpi` and `runtime/media-mount/kobocat`) and bind
+those mount points into every application worker and NGINX using `rslave`
+propagation. Do not mount the bucket root and bind its subdirectories: a bind
+mount only receives mount events for the exact mount point it was created from,
+so consumers keep seeing an empty directory after a remount. Static files and
+logs remain on local persistent disk.
 
 Containerized GCS FUSE needs `/dev/fuse`, `SYS_ADMIN`, mount propagation, and a
 shared host bind mount. This is elevated infrastructure, so the FUSE container

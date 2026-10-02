@@ -2,7 +2,9 @@
 set -euo pipefail
 mkdir -p /media/kpi /media/kobocat
 if [[ "${GCS_FUSE_ENABLED:-0}" == 1 ]]; then
-  mountpoint -q /media || { echo 'GCS media mount is not mounted; refusing startup' >&2; exit 1; }
+  for d in /media/kpi /media/kobocat; do
+    mountpoint -q "$d" || { echo "$d is not a GCS FUSE mount point; refusing startup" >&2; exit 1; }
+  done
 fi
 for d in /media/kpi /media/kobocat; do
   test -w "$d" || { echo "$d is not writable" >&2; exit 1; }

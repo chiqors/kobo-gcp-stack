@@ -12,8 +12,8 @@ services:
     volumes:
       - ../runtime/static:/srv/static
       - ../runtime/logs/kpi:/srv/logs
-      - ../runtime/media-mount/kpi:/srv/src/kpi/media
-      - ../runtime/media-mount/kobocat:/srv/src/kobocat/media
+      - ../runtime/media-mount/kpi:/srv/src/kpi/media:rslave
+      - ../runtime/media-mount/kobocat:/srv/src/kobocat/media:rslave
       - ../scripts/wait_for_mongo.sh:/srv/init/wait_for_mongo.bash:ro
       - ../scripts/wait_for_postgres.sh:/srv/init/wait_for_postgres.bash:ro
     networks: [kobo-internal]
@@ -69,8 +69,8 @@ services:
     volumes:
       - ../runtime/config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../runtime/static:/srv/www:ro
-      - ../runtime/media-mount/kobocat:/media:ro
-      - ../runtime/media-mount/kpi:/srv/kpi_media:ro
+      - ../runtime/media-mount/kobocat:/media:ro,rslave
+      - ../runtime/media-mount/kpi:/srv/kpi_media:ro,rslave
       - ../runtime/logs/nginx:/var/log/nginx
     ports:
       - "${NGINX_BIND_ADDRESS:-127.0.0.1}:${NGINX_BIND_PORT:-8080}:80"
@@ -150,6 +150,7 @@ services:
     privileged: true
     cap_add: [SYS_ADMIN]
     devices: [/dev/fuse:/dev/fuse]
+    stop_grace_period: 45s
     command: [bash, /opt/nextgen/gcsfuse-mount.sh]
     environment:
       GCS_BUCKET_NAME: ${GCS_BUCKET_NAME}
@@ -163,7 +164,7 @@ services:
     profiles: [gcsfuse]
     restart: unless-stopped
     healthcheck:
-      test: [CMD-SHELL, "test \"$$(findmnt -n -o FSTYPE --target /mnt/media | tail -1)\" = fuse.gcsfuse"]
+      test: [CMD-SHELL, "for p in /mnt/media/kpi /mnt/media/kobocat; do findmnt -n -o FSTYPE --target $$p | grep -qx fuse.gcsfuse || exit 1; stat $$p >/dev/null 2>&1 || exit 1; done"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -173,7 +174,8 @@ services:
     command: [bash, /opt/nextgen/preflight.sh]
     env_file: [../runtime/kobo.env]
     volumes:
-      - ../runtime/media-mount:/media
+      - ../runtime/media-mount/kpi:/media/kpi:rslave
+      - ../runtime/media-mount/kobocat:/media/kobocat:rslave
       - ../scripts/preflight.sh:/opt/nextgen/preflight.sh:ro
     networks: [kobo-internal]
     restart: "no"

@@ -15,14 +15,20 @@ case "$action" in
   up)
     if [[ "${GCS_FUSE_ENABLED:-0}" == 1 ]]; then
       docker compose --env-file .env -f compose/compose.yaml --profile gcsfuse up -d gcsfuse
+      media_ready() {
+        local d
+        for d in runtime/media-mount/kpi runtime/media-mount/kobocat; do
+          [[ "$(findmnt -n -o FSTYPE --target "$d" 2>/dev/null | tail -1 || true)" == fuse.gcsfuse ]] || return 1
+        done
+      }
       for _ in $(seq 1 60); do
-        [[ "$(findmnt -n -o FSTYPE --target runtime/media-mount 2>/dev/null | tail -1 || true)" == fuse.gcsfuse ]] && break
+        if media_ready; then break; fi
         sleep 2
       done
-      [[ "$(findmnt -n -o FSTYPE --target runtime/media-mount 2>/dev/null | tail -1 || true)" == fuse.gcsfuse ]] || {
-        echo 'GCS FUSE bucket mount did not become ready' >&2
+      if ! media_ready; then
+        echo 'GCS FUSE media mounts did not become ready' >&2
         exit 1
-      }
+      fi
     fi
     docker compose --env-file .env -f compose/compose.yaml "${profiles[@]}" up -d
     if [[ "${GCS_FUSE_ENABLED:-0}" == 1 ]]; then
