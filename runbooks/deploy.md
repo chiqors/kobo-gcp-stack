@@ -10,3 +10,19 @@
 
 Never run two `kpi` initialization containers concurrently. The `kpi` service
 is the migration owner; workers wait for its health check.
+
+## Media remount
+
+The GCS FUSE prefixes must be mounted before the application containers start.
+If the `gcsfuse` container is recreated, the running consumers keep pointing at
+the dead mount and media returns `Transport endpoint is not connected`. Recovery
+is:
+
+```bash
+scripts/deploy.sh remount
+```
+
+This force-recreates the FUSE container, waits for both prefix mounts, and
+recreates `kpi`, the workers, `beat`, and NGINX. Do not use
+`docker compose restart gcsfuse`; it leaves stale mounts and does not recreate
+the consumers.

@@ -127,6 +127,18 @@ mount only receives mount events for the exact mount point it was created from,
 so consumers keep seeing an empty directory after a remount. Static files and
 logs remain on local persistent disk.
 
+### Media mount ordering contract
+
+A container that binds a directory which is already a FUSE mount keeps pointing
+at that mount forever: Linux only forwards later mounts to a bind that was
+created while its source was still part of the shared (plain) parent tree. As a
+result the FUSE prefixes must exist *before* the application containers are
+created, and any remount of the prefixes requires recreating the media
+consumers. `scripts/deploy.sh` enforces this: `up` mounts first and then
+recreates `kpi`, the workers, `beat`, and NGINX, and `remount` does the same
+after force-recreating the FUSE container. Never `docker compose restart` the
+`gcsfuse` container on its own; use `scripts/deploy.sh remount`.
+
 Containerized GCS FUSE needs `/dev/fuse`, `SYS_ADMIN`, mount propagation, and a
 shared host bind mount. This is elevated infrastructure, so the FUSE container
 must be isolated from the public network. It reads the same mounted JSON key as
